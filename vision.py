@@ -8,13 +8,13 @@ from networktables import NetworkTables
 from numpy import array
 
 cap = cv2.VideoCapture(0)
-ROBOT_IP = '10.56.35.2'
+ROBOT_IP = 'http://10.56.35.2'
 smart_dashboard = None
 CALIBRATION_PORT = 'tower'
 
 min_hsv = array((60, 255, 77))
-max_hsv = array((60, 255, 133))
-max_area_diff = 0
+max_hsv = array((78, 255, 133))
+max_area_diff = 1234567890
 
 camera_view_angle = 50
 
@@ -30,9 +30,10 @@ def process_image(frame):
     total_x = 0
     total_y = 0
     cont = 0
-
+    print('min_hsv:', min_hsv)
+    print('max_hsv:', max_hsv)
     areas = [cv2.contourArea(c) for c in contours]
-
+    print('area amount:', len(areas))
     if areas == []: return math.nan, math.nan
 
     max_area = max(areas)
@@ -41,7 +42,7 @@ def process_image(frame):
         c = contours[i]
         area = areas[i]
 
-        if area < max_area - max_area_diff:
+        if area < 0.7 * max_area:
             continue
 
         M = cv2.moments(c)
@@ -50,7 +51,7 @@ def process_image(frame):
         total_x += x
         total_y += y
         cont += 1
-
+    print('count:', cont)
     if cont == 0:
         return math.nan, math.nan
 
@@ -65,12 +66,12 @@ def init_smart_dashboard():
     if not smart_dashboard:
         return
     smart_dashboard.putNumber('vision_max_area_diff' + CALIBRATION_PORT, max_area_diff)
-    smart_dashboard.putNumber('calibration_lower_h' + CALIBRATION_PORT, min_hsv[0])
-    smart_dashboard.putNumber('calibration_lower_s' + CALIBRATION_PORT, min_hsv[1])
-    smart_dashboard.putNumber('calibration_lower_v' + CALIBRATION_PORT, min_hsv[2])
-    smart_dashboard.putNumber('calibration_upper_h' + CALIBRATION_PORT, max_hsv[0])
-    smart_dashboard.putNumber('calibration_upper_s' + CALIBRATION_PORT, max_hsv[1])
-    smart_dashboard.putNumber('calibration_upper_v' + CALIBRATION_PORT, max_hsv[2])
+    smart_dashboard.putNumber('calibration-lower-h-' + CALIBRATION_PORT, min_hsv[0])
+    smart_dashboard.putNumber('calibration-lower-s-' + CALIBRATION_PORT, min_hsv[1])
+    smart_dashboard.putNumber('calibration-lower-v-' + CALIBRATION_PORT, min_hsv[2])
+    smart_dashboard.putNumber('calibration-upper-h-' + CALIBRATION_PORT, max_hsv[0])
+    smart_dashboard.putNumber('calibration-upper-s-' + CALIBRATION_PORT, max_hsv[1])
+    smart_dashboard.putNumber('calibration-upper-v-' + CALIBRATION_PORT, max_hsv[2])
     smart_dashboard.putNumber('camera_view_angle' + CALIBRATION_PORT, camera_view_angle)
 
 def update_vars():
@@ -79,13 +80,13 @@ def update_vars():
 
     global max_area_diff, camera_view_angle
 
-    min_hsv[0] = smart_dashboard.getNumber('calibration_lower_h' + CALIBRATION_PORT, min_hsv[0])
-    min_hsv[1] = smart_dashboard.getNumber('calibration_lower_s' + CALIBRATION_PORT, min_hsv[1])
-    min_hsv[2] = smart_dashboard.getNumber('calibration_lower_v' + CALIBRATION_PORT, min_hsv[2])
+    min_hsv[0] = smart_dashboard.getNumber('calibration-lower-h-' + CALIBRATION_PORT, min_hsv[0])
+    min_hsv[1] = smart_dashboard.getNumber('calibration-lower-s-' + CALIBRATION_PORT, min_hsv[1])
+    min_hsv[2] = smart_dashboard.getNumber('calibration-lower-v-' + CALIBRATION_PORT, min_hsv[2])
 
-    max_hsv[0] = smart_dashboard.getNumber('calibration_upper_h', max_hsv[0])
-    max_hsv[1] = smart_dashboard.getNumber('calibration_upper_s' + CALIBRATION_PORT, max_hsv[1])
-    max_hsv[2] = smart_dashboard.getNumber('calibration_upper_v' + CALIBRATION_PORT, max_hsv[2])
+    max_hsv[0] = smart_dashboard.getNumber('calibration-upper-h-' + CALIBRATION_PORT, max_hsv[0])
+    max_hsv[1] = smart_dashboard.getNumber('calibration-upper-s-' + CALIBRATION_PORT, max_hsv[1])
+    max_hsv[2] = smart_dashboard.getNumber('calibration-upper-v-' + CALIBRATION_PORT, max_hsv[2])
     camera_view_angle = smart_dashboard.getNumber('camera_view_angle' + CALIBRATION_PORT, camera_view_angle)
 
     max_area_diff = smart_dashboard.getNumber('vision_max_area_diff' + CALIBRATION_PORT, max_area_diff)
@@ -129,8 +130,10 @@ def connected_to_robot():
     try:
         print("Searching for robot...")
         status_code = requests.get(ROBOT_IP, timeout=(2, 1)).status_code
+        print(status_code)
         return status_code == 200
-    except:
+    except Exepetion as e:
+        print(e)
         print('robot is dead 🦀')
         return False
 
@@ -148,5 +151,6 @@ if __name__ == '__main__':
         if x is not math.nan:
             put_number('vision_tower_x', x)
             put_number('vision_tower_angle', angle)
-            print("x: ", x, "\nangle: ", angle)
-        
+        else:
+            put_number('vision_tower_x', 1000)
+            put_number('vision_tower_angle', 1000)
