@@ -1,9 +1,11 @@
 import math
 import time
+from logging import exception
 from threading import Condition, Thread
 
 import cv2
 import requests
+from cscore import CameraServer
 from networktables import NetworkTables
 from numpy import array
 
@@ -18,6 +20,8 @@ max_area_diff = 1234567890
 
 camera_view_angle = 50
 
+output_stream = cs.putVideo('Vision', 320, 240)
+
 def process_image(frame):
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
@@ -25,6 +29,8 @@ def process_image(frame):
 
     mask = cv2.erode(mask, None, iterations=2)
     mask = cv2.dilate(mask, None, iterations=2)
+
+    output_stream.putFrame(mask)
 
     _, contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     total_x = 0
@@ -132,7 +138,7 @@ def connected_to_robot():
         status_code = requests.get(ROBOT_IP, timeout=(2, 1)).status_code
         print(status_code)
         return status_code == 200
-    except Exepetion as e:
+    except exception as e:
         print(e)
         print('robot is dead 🦀')
         return False
