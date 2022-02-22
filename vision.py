@@ -4,12 +4,21 @@ from logging import exception
 from threading import Condition, Thread
 
 import cv2
+import numpy as np
 import requests
 from cscore import CameraServer
 from networktables import NetworkTables
 from numpy import array
 
-cap = cv2.VideoCapture(0)
+cs = CameraServer()
+camera = cs.startAutomaticCapture()
+input_stream = cs.getVideo()
+output_stream = cs.putVideo('Vision', 320, 240)
+
+clean_img = np.zeros(shape=(320, 240, 3), dtype=np.uint8)
+kernel = np.ones((5, 5), np.uint8)
+
+# cap = cv2.VideoCapture(0)
 ROBOT_IP = 'http://10.56.35.2'
 smart_dashboard = None
 CALIBRATION_PORT = 'tower'
@@ -20,27 +29,25 @@ max_area_diff = 1234567890
 
 camera_view_angle = 50
 
-output_stream = cs.putVideo('Vision', 320, 240)
 
 def process_image(frame):
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
     mask = cv2.inRange(frame, min_hsv, max_hsv)
 
-    mask = cv2.erode(mask, None, iterations=2)
-    mask = cv2.dilate(mask, None, iterations=2)
-
-    output_stream.putFrame(mask)
+    # mask = cv2.erode(mask, kernel, iterations=1)
+    # mask = cv2.dilate(mask, kernel, iterations=1)
 
     _, contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     total_x = 0
     total_y = 0
     cont = 0
-    print('min_hsv:', min_hsv)
-    print('max_hsv:', max_hsv)
+    # print('min_hsv:', min_hsv)
+    # print('max_hsv:', max_hsv)
     areas = [cv2.contourArea(c) for c in contours]
-    print('area amount:', len(areas))
-    if areas == []: return math.nan, math.nan
+    # print('area amount:', len(areas))
+    if areas == []:
+        return math.nan, math.nan
 
     max_area = max(areas)
 
@@ -52,12 +59,17 @@ def process_image(frame):
             continue
 
         M = cv2.moments(c)
+        if M['m00'] == 0.0:
+            continue
         x = M['m10'] / M['m00']
         y = M['m01'] / M['m00']
         total_x += x
         total_y += y
         cont += 1
-    print('count:', cont)
+    if cont > 0:
+        cv2.circle(mask, (int(total_x / cont), int(total_y / cont)), 10, 255, 2)
+    output_stream.putFrame(mask)
+    # print('count:', cont)
     if cont == 0:
         return math.nan, math.nan
 
@@ -67,6 +79,7 @@ def process_image(frame):
 def put_number(key, number):
     if smart_dashboard:
         smart_dashboard.putNumber(key, number)
+
 
 def init_smart_dashboard():
     if not smart_dashboard:
@@ -121,12 +134,14 @@ def connection_listener(connected, info, cond : Condition):
     with cond:
         cond.notify()
 
+
 def connect_periodically(on_connect = None):
     while not connected_to_robot():
         time.sleep(10)
     connect()
     if on_connect:
         on_connect()
+
 
 def start_connection(on_connect = None):
     thread = Thread(target=lambda : connect_periodically(on_connect))
@@ -143,14 +158,19 @@ def connected_to_robot():
         print('robot is dead 🦀')
         return False
 
+
 if __name__ == '__main__':
 
     start_connection()
-    while True:
-        success, frame = cap.read()
 
-        if not success:
+    while True:
+        time, frame = input_stream.grabFrame(clean_img)
+        # success, frame = cap.read()
+
+        if time == 0:
             continue
+        # if not success:
+        #     continue
 
         x, angle = process_image(frame)
 
