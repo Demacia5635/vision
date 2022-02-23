@@ -32,6 +32,7 @@ camera_view_angle = 50
 
 def process_image(frame):
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    frame[0:240, 280:320] = [0, 0, 0]
 
     mask = cv2.inRange(frame, min_hsv, max_hsv)
 
@@ -50,12 +51,13 @@ def process_image(frame):
         return math.nan, math.nan
 
     max_area = max(areas)
+    cords = {}
 
     for i in range(len(contours)):
         c = contours[i]
         area = areas[i]
 
-        if area < 0.7 * max_area:
+        if area < 0.3 * max_area:
             continue
 
         M = cv2.moments(c)
@@ -63,18 +65,29 @@ def process_image(frame):
             continue
         x = M['m10'] / M['m00']
         y = M['m01'] / M['m00']
+        cords[x] = y
         total_x += x
         total_y += y
         cont += 1
+            
     if cont > 0:
-        cv2.circle(mask, (int(total_x / cont), int(total_y / cont)), 10, 255, 2)
+        cords = sorted(cords.items())
+        x_cords = [tuple[0] for tuple in cords]
+        y_cords = [tuple[1] for tuple in cords]
+        best_x = x_cords[0]
+        best_y = y_cords[0]
+        if len(x_cords) >= 2:
+            if x_cords[1] - x_cords[0] <= 10:
+                best_x = int((x_cords[1] - x_cords[0]) / 2)
+                best_y = int((y_cords[1] - y_cords[0]) / 2)
+        cv2.circle(mask, (int(best_x), int(best_y)), 10, 255, 2)
     output_stream.putFrame(mask)
     # print('count:', cont)
     if cont == 0:
         return math.nan, math.nan
 
 
-    return frame.shape[1] / 2 - total_y / cont, (frame.shape[0] / 2 - total_x / cont) * camera_view_angle / frame.shape[0]
+    return total_y / cont, total_x / cont
 
 def put_number(key, number):
     if smart_dashboard:
@@ -172,11 +185,11 @@ if __name__ == '__main__':
         # if not success:
         #     continue
 
-        x, angle = process_image(frame)
+        y, x = process_image(frame)
 
-        if x is not math.nan:
+        if y is not math.nan:
             put_number('vision_tower_x', x)
-            put_number('vision_tower_angle', angle)
+            put_number('vision_tower_y', y)
         else:
             put_number('vision_tower_x', 1000)
-            put_number('vision_tower_angle', 1000)
+            put_number('vision_tower_y', 1000)
