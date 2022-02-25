@@ -32,7 +32,7 @@ camera_view_angle = 50
 
 def process_image(frame):
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    frame[0:240, 280:320] = [0, 0, 0]
+    frame[0:frame.shape[0], frame.shape[1]-40:frame.shape[1]] = [0, 0, 0]
 
     mask = cv2.inRange(frame, min_hsv, max_hsv)
 
@@ -65,22 +65,22 @@ def process_image(frame):
             continue
         x = M['m10'] / M['m00']
         y = M['m01'] / M['m00']
-        cords[x] = y
+        cords[int(x)] = int(y)
         total_x += x
         total_y += y
         cont += 1
             
     if cont > 0:
         cords = sorted(cords.items())
-        x_cords = [tuple[0] for tuple in cords]
-        y_cords = [tuple[1] for tuple in cords]
+        x_cords = [x_tuple[0] for x_tuple in cords]
+        y_cords = [y_tuple[1] for y_tuple in cords]
         best_x = x_cords[0]
         best_y = y_cords[0]
         if len(x_cords) >= 2:
             if x_cords[1] - x_cords[0] <= 10:
                 best_x = int((x_cords[1] - x_cords[0]) / 2)
                 best_y = int((y_cords[1] - y_cords[0]) / 2)
-        cv2.circle(mask, (int(best_x), int(best_y)), 10, 255, 2)
+        cv2.circle(mask, (best_x, best_y), 10, 255, 2)
     output_stream.putFrame(mask)
     # print('count:', cont)
     if cont == 0:
