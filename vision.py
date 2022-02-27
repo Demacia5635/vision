@@ -4,6 +4,7 @@ from logging import exception
 from threading import Condition, Thread
 
 import cv2
+import networktables
 import numpy as np
 import requests
 from cscore import CameraServer
@@ -51,7 +52,7 @@ def process_image(frame):
         return math.nan, math.nan
 
     max_area = max(areas)
-    cords = {}
+    cords = np.empty(2)
 
     for i in range(len(contours)):
         c = contours[i]
@@ -65,29 +66,26 @@ def process_image(frame):
             continue
         x = M['m10'] / M['m00']
         y = M['m01'] / M['m00']
-        cords[int(x)] = int(y)
+        cords = np.append(cords, x, 0)
+        cords = np.append(cords, y, 1)
         total_x += x
         total_y += y
         cont += 1
             
     if cont > 0:
-        cords = sorted(cords.items())
-        x_cords = [x_tuple[0] for x_tuple in cords]
-        y_cords = [y_tuple[1] for y_tuple in cords]
-        best_x = x_cords[0]
-        best_y = y_cords[0]
-        if len(x_cords) >= 2:
-            if x_cords[1] - x_cords[0] <= 10:
-                best_x = int((x_cords[1] - x_cords[0]) / 2)
-                best_y = int((y_cords[1] - y_cords[0]) / 2)
-        cv2.circle(mask, (best_x, best_y), 10, 255, 2)
+        cords = cords[cords[:, 0].argsort()]
+        x_list = cords[:, 0]
+        xn = [np.count_nonzero((x_list >= i) & (x_list < i + 20)) for i in x_list]
+        i = np.argmax(xn)
+        x = np.min(cords[i:i+xn[i], 0])
+        y = np.average(cords[i:i+xn[i], 1])
+        cv2.circle(mask, (x, y), 10, 255, 2)
     output_stream.putFrame(mask)
     # print('count:', cont)
     if cont == 0:
         return math.nan, math.nan
-
-
     return total_y / cont, total_x / cont
+
 
 def put_number(key, number):
     if smart_dashboard:
@@ -123,11 +121,12 @@ def update_vars():
 
     max_area_diff = smart_dashboard.getNumber('vision_max_area_diff' + CALIBRATION_PORT, max_area_diff)
 
+
 def connect():
     global smart_dashboard
     cond = Condition()
     notified = False
-    NetworkTables.initialize(server='10.56.35.2')
+    NetworkTables.initialize()  # server='10.56.35.2'
     NetworkTables.addConnectionListener(lambda connected, info: connection_listener(connected, info, cond), immediateNotify=True)
 
     with cond:
