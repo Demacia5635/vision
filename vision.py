@@ -4,7 +4,6 @@ from logging import exception
 from threading import Condition, Thread
 
 import cv2
-import networktables
 import numpy as np
 import requests
 from cscore import CameraServer
@@ -26,7 +25,6 @@ CALIBRATION_PORT = 'tower'
 
 min_hsv = array((60, 255, 77))
 max_hsv = array((78, 255, 133))
-max_area_diff = 1234567890
 
 camera_view_angle = 50
 
@@ -48,38 +46,33 @@ def process_image(frame):
     # print('max_hsv:', max_hsv)
     areas = [cv2.contourArea(c) for c in contours]
     # print('area amount:', len(areas))
-    if areas == []:
+    if not areas:
         return math.nan, math.nan
 
-    max_area = max(areas)
-    cords = np.empty(2)
+    cords = []
 
     for i in range(len(contours)):
         c = contours[i]
-        area = areas[i]
-
-        if area < 0.3 * max_area:
-            continue
 
         M = cv2.moments(c)
         if M['m00'] == 0.0:
             continue
         x = M['m10'] / M['m00']
         y = M['m01'] / M['m00']
-        cords = np.append(cords, x, 0)
-        cords = np.append(cords, y, 1)
+        cords.append([x, y])
         total_x += x
         total_y += y
         cont += 1
             
     if cont > 0:
+        cords = np.array(cords)
         cords = cords[cords[:, 0].argsort()]
         x_list = cords[:, 0]
-        xn = [np.count_nonzero((x_list >= i) & (x_list < i + 20)) for i in x_list]
+        xn = [np.count_nonzero((x_list >= i) & (x_list < i + 40)) for i in x_list]
         i = np.argmax(xn)
         x = np.min(cords[i:i+xn[i], 0])
         y = np.average(cords[i:i+xn[i], 1])
-        cv2.circle(mask, (x, y), 10, 255, 2)
+        cv2.circle(mask, (int(x), int(y)), 10, 255, 2)
     output_stream.putFrame(mask)
     # print('count:', cont)
     if cont == 0:
@@ -95,7 +88,6 @@ def put_number(key, number):
 def init_smart_dashboard():
     if not smart_dashboard:
         return
-    smart_dashboard.putNumber('vision_max_area_diff' + CALIBRATION_PORT, max_area_diff)
     smart_dashboard.putNumber('calibration-lower-h-' + CALIBRATION_PORT, min_hsv[0])
     smart_dashboard.putNumber('calibration-lower-s-' + CALIBRATION_PORT, min_hsv[1])
     smart_dashboard.putNumber('calibration-lower-v-' + CALIBRATION_PORT, min_hsv[2])
@@ -104,11 +96,11 @@ def init_smart_dashboard():
     smart_dashboard.putNumber('calibration-upper-v-' + CALIBRATION_PORT, max_hsv[2])
     smart_dashboard.putNumber('camera_view_angle' + CALIBRATION_PORT, camera_view_angle)
 
-def update_vars():
-    if not smart_dashboard:
-        return
 
-    global max_area_diff, camera_view_angle
+def update_vars():
+    if not smart_dashboard: return
+
+    global camera_view_angle
 
     min_hsv[0] = smart_dashboard.getNumber('calibration-lower-h-' + CALIBRATION_PORT, min_hsv[0])
     min_hsv[1] = smart_dashboard.getNumber('calibration-lower-s-' + CALIBRATION_PORT, min_hsv[1])
@@ -119,14 +111,12 @@ def update_vars():
     max_hsv[2] = smart_dashboard.getNumber('calibration-upper-v-' + CALIBRATION_PORT, max_hsv[2])
     camera_view_angle = smart_dashboard.getNumber('camera_view_angle' + CALIBRATION_PORT, camera_view_angle)
 
-    max_area_diff = smart_dashboard.getNumber('vision_max_area_diff' + CALIBRATION_PORT, max_area_diff)
-
 
 def connect():
     global smart_dashboard
     cond = Condition()
     notified = False
-    NetworkTables.initialize()  # server='10.56.35.2'
+    NetworkTables.initialize(server='10.56.35.2')
     NetworkTables.addConnectionListener(lambda connected, info: connection_listener(connected, info, cond), immediateNotify=True)
 
     with cond:
