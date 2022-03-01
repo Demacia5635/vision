@@ -1,5 +1,7 @@
 import math
 import time
+import logging
+import sys
 from logging import exception
 from threading import Condition, Thread
 
@@ -10,22 +12,34 @@ from cscore import CameraServer
 from networktables import NetworkTables
 from numpy import array
 
+
+# Camera Settings
+width, height = 960, 540
 cs = CameraServer()
 camera = cs.startAutomaticCapture()
+camera.setFPS(10)
+camera.setResolution(width, height)
 input_stream = cs.getVideo()
-output_stream = cs.putVideo('Vision', 320, 240)
+output_stream = cs.putVideo('Vision', width, height)
 
-clean_img = np.zeros(shape=(320, 240, 3), dtype=np.uint8)
+
+# Templates
+clean_img = np.zeros(shape=(width, height, 3), dtype=np.uint8)
 kernel = np.ones((5, 5), np.uint8)
 
-# cap = cv2.VideoCapture(0)
+
+# Connection Parameters
 ROBOT_IP = 'http://10.56.35.2'
 smart_dashboard = None
 CALIBRATION_PORT = 'tower'
 
+
+# Color Range
 min_hsv = array((60, 255, 77))
 max_hsv = array((78, 255, 133))
 
+
+# Hardare Parameters
 camera_view_angle = 50
 
 
@@ -35,19 +49,20 @@ def process_image(frame):
 
     mask = cv2.inRange(frame, min_hsv, max_hsv)
 
-    # mask = cv2.erode(mask, kernel, iterations=1)
-    # mask = cv2.dilate(mask, kernel, iterations=1)
+    mask = cv2.erode(mask, kernel, iterations=1)
+    mask = cv2.dilate(mask, kernel, iterations=1)
 
     _, contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    total_x = 0
-    total_y = 0
+
     cont = 0
-    # print('min_hsv:', min_hsv)
-    # print('max_hsv:', max_hsv)
+    logging.debug('min_hsv:', min_hsv)
+    logging.debug('max_hsv:', max_hsv)
+
     areas = [cv2.contourArea(c) for c in contours]
-    # print('area amount:', len(areas))
+    logging.debug('area amount:', len(areas))
+
     if not areas:
-        return math.nan, math.nan
+        return None, None
 
     cords = []
 
@@ -60,8 +75,6 @@ def process_image(frame):
         x = M['m10'] / M['m00']
         y = M['m01'] / M['m00']
         cords.append([x, y])
-        total_x += x
-        total_y += y
         cont += 1
             
     if cont > 0:
@@ -74,15 +87,21 @@ def process_image(frame):
         y = np.average(cords[i:i+xn[i], 1])
         cv2.circle(mask, (int(x), int(y)), 10, 255, 2)
     output_stream.putFrame(mask)
-    # print('count:', cont)
+
+    logging.debug('count:', cont)
+    
     if cont == 0:
-        return math.nan, math.nan
-    return total_y / cont, total_x / cont
+        return None, None
+    return x, y
 
 
 def put_number(key, number):
     if smart_dashboard:
         smart_dashboard.putNumber(key, number)
+
+def put_boolean(key, value):
+    if smart_dashboard:
+        smart_dashboard.putBoolean(key, value)
 
 
 def init_smart_dashboard():
@@ -120,11 +139,11 @@ def connect():
     NetworkTables.addConnectionListener(lambda connected, info: connection_listener(connected, info, cond), immediateNotify=True)
 
     with cond:
-        print("Connecting...")
+        logging.info("Connecting...")
         if not notified:
             cond.wait()
 
-    print("Connected!")
+    logging.info("Connected!")
     smart_dashboard = NetworkTables.getTable('SmartDashboard')
     update_vars()
     init_smart_dashboard()
@@ -132,7 +151,7 @@ def connect():
 
 
 def connection_listener(connected, info, cond : Condition):
-    print(info, '; Connected=%s' % connected)
+    logging.info("{info}; Connceted={status}".format(info = info, status = connected))
     with cond:
         cond.notify()
 
@@ -151,34 +170,32 @@ def start_connection(on_connect = None):
 
 def connected_to_robot():
     try:
-        print("Searching for robot...")
+        logging.info("Searching for robot...")
         status_code = requests.get(ROBOT_IP, timeout=(2, 1)).status_code
-        print(status_code)
+        logging.info(status_code)
         return status_code == 200
     except exception as e:
-        print(e)
-        print('robot is dead 🦀')
+        logging.warning(e)
+        logging.warning('robot is dead 🦀')
         return False
 
 
 if __name__ == '__main__':
-
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO)
+    
     start_connection()
 
     while True:
         time, frame = input_stream.grabFrame(clean_img)
-        # success, frame = cap.read()
 
         if time == 0:
             continue
-        # if not success:
-        #     continue
 
-        y, x = process_image(frame)
+        x, y = process_image(frame)
 
-        if y is not math.nan:
+        if x and y is not None:
             put_number('vision_tower_x', x)
             put_number('vision_tower_y', y)
+            put_boolean('vision_found', True)
         else:
-            put_number('vision_tower_x', 1000)
-            put_number('vision_tower_y', 1000)
+            put_boolean('vision_found', False)
