@@ -1,5 +1,6 @@
 import math
 import time
+import logging
 from logging import exception
 from threading import Condition, Thread
 
@@ -10,27 +11,37 @@ from cscore import CameraServer
 from networktables import NetworkTables
 from numpy import array
 
+# Camera Settings
 cs = CameraServer()
 camera = cs.startAutomaticCapture()
 input_stream = cs.getVideo()
 output_stream = cs.putVideo('Vision', 320, 240)
 
+# Templates
 clean_img = np.zeros(shape=(320, 240, 3), dtype=np.uint8)
 kernel = np.ones((5, 5), np.uint8)
 
+# Connection Parameters
 # cap = cv2.VideoCapture(0)
 ROBOT_IP = 'http://10.56.35.2'
 smart_dashboard = None
 CALIBRATION_PORT = 'tower'
 
+# Color Range
 min_hsv = array((60, 255, 77))
 max_hsv = array((78, 255, 133))
 
+# Hardware Parameters
 camera_view_angle = 50
+
+# Logger
+logging.basicConfig(filename='gamelog.log', level=logging.info, filemode='w', format='%(levelname)s: %(message)s')
 
 
 def process_image(frame):
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+
+    # TODO: Find solution for camera placement
     frame[0:frame.shape[0], frame.shape[1]-40:frame.shape[1]] = [0, 0, 0]
 
     mask = cv2.inRange(frame, min_hsv, max_hsv)
@@ -44,12 +55,12 @@ def process_image(frame):
     cont = 0
     # print('min_hsv:', min_hsv)
     # print('max_hsv:', max_hsv)
-    areas = [cv2.contourArea(c) for c in contours]
+    areas = [(cv2.contourArea(c) for c in contours) if contours else []]
     # print('area amount:', len(areas))
-    if not areas:
+    if not bool(areas):
         return math.nan, math.nan
 
-    cords = []
+    cords = np.array()
 
     for i in range(len(contours)):
         c = contours[i]
@@ -59,13 +70,12 @@ def process_image(frame):
             continue
         x = M['m10'] / M['m00']
         y = M['m01'] / M['m00']
-        cords.append([x, y])
+        cords = np.append(cords, [x, y])
         total_x += x
         total_y += y
         cont += 1
             
     if cont > 0:
-        cords = np.array(cords)
         cords = cords[cords[:, 0].argsort()]
         x_list = cords[:, 0]
         xn = [np.count_nonzero((x_list >= i) & (x_list < i + 40)) for i in x_list]
@@ -73,6 +83,7 @@ def process_image(frame):
         x = np.min(cords[i:i+xn[i], 0])
         y = np.average(cords[i:i+xn[i], 1])
         cv2.circle(mask, (int(x), int(y)), 10, 255, 2)
+    
     output_stream.putFrame(mask)
     # print('count:', cont)
     if cont == 0:
@@ -120,11 +131,11 @@ def connect():
     NetworkTables.addConnectionListener(lambda connected, info: connection_listener(connected, info, cond), immediateNotify=True)
 
     with cond:
-        print("Connecting...")
+        logging.info("Connecting...")
         if not notified:
             cond.wait()
 
-    print("Connected!")
+    logging.info("Connected!")
     smart_dashboard = NetworkTables.getTable('SmartDashboard')
     update_vars()
     init_smart_dashboard()
@@ -132,7 +143,7 @@ def connect():
 
 
 def connection_listener(connected, info, cond : Condition):
-    print(info, '; Connected=%s' % connected)
+    logging.info(info, '; Connected=%s' % connected)
     with cond:
         cond.notify()
 
@@ -151,13 +162,13 @@ def start_connection(on_connect = None):
 
 def connected_to_robot():
     try:
-        print("Searching for robot...")
+        logging.info("Searching for robot...")
         status_code = requests.get(ROBOT_IP, timeout=(2, 1)).status_code
-        print(status_code)
+        logging.info(status_code)
         return status_code == 200
     except exception as e:
-        print(e)
-        print('robot is dead 🦀')
+        logging.warning(e)
+        logging.warning('robot is dead 🦀')
         return False
 
 
@@ -166,10 +177,10 @@ if __name__ == '__main__':
     start_connection()
 
     while True:
-        time, frame = input_stream.grabFrame(clean_img)
+        ret, frame = input_stream.grabFrame(clean_img)
         # success, frame = cap.read()
 
-        if time == 0:
+        if ret == 0:
             continue
         # if not success:
         #     continue
