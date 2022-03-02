@@ -45,7 +45,7 @@ camera_view_angle = 50
 
 def process_image(frame):
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    frame[0:frame.shape[0], frame.shape[1]-40:frame.shape[1]] = [0, 0, 0]
+    #frame[0:frame.shape[0], frame.shape[1]-40:frame.shape[1]] = [0, 0, 0]
 
     mask = cv2.inRange(frame, min_hsv, max_hsv)
 
