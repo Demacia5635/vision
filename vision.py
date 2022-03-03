@@ -1,7 +1,7 @@
-import math
-import time
 import logging
+import math
 import sys
+import time
 from logging import exception
 from threading import Condition, Thread
 
@@ -11,7 +11,6 @@ import requests
 from cscore import CameraServer
 from networktables import NetworkTables
 from numpy import array
-
 
 # Camera Settings
 width, height = 960, 540
@@ -54,7 +53,6 @@ def process_image(frame):
 
     _, contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    cont = 0
     logging.debug('min_hsv:', min_hsv)
     logging.debug('max_hsv:', max_hsv)
 
@@ -64,9 +62,10 @@ def process_image(frame):
     if not areas:
         return None, None
 
-    cords = []
+    length = len(areas)
+    cords = np.empty((length, 2), dtype=np.float32)
 
-    for i in range(len(contours)):
+    for i in range(length):
         c = contours[i]
 
         M = cv2.moments(c)
@@ -74,24 +73,17 @@ def process_image(frame):
             continue
         x = M['m10'] / M['m00']
         y = M['m01'] / M['m00']
-        cords.append([x, y])
-        cont += 1
+        cords[i] = (x, y)
             
-    if cont > 0:
-        cords = np.array(cords)
-        cords = cords[cords[:, 0].argsort()]
-        x_list = cords[:, 0]
-        xn = [np.count_nonzero((x_list >= i) & (x_list < i + 40)) for i in x_list]
-        i = np.argmax(xn)
-        x = np.min(cords[i:i+xn[i], 0])
-        y = np.average(cords[i:i+xn[i], 1])
-        cv2.circle(mask, (int(x), int(y)), 10, 255, 2)
+    cords = cords[cords[:, 0].argsort()]
+    x_list = cords[:, 0]
+    xn = [np.count_nonzero((x_list >= i) & (x_list < i + 40)) for i in x_list]
+    i = np.argmax(xn)
+    x = np.min(cords[i:i+xn[i], 0])
+    y = np.average(cords[i:i+xn[i], 1])
+    cv2.circle(mask, (int(x), int(y)), 10, 255, 2)
     output_stream.putFrame(mask)
 
-    logging.debug('count:', cont)
-    
-    if cont == 0:
-        return None, None
     return x, y
 
 
