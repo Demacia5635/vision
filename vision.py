@@ -56,13 +56,7 @@ def process_image(frame):
     logging.debug('min_hsv:', min_hsv)
     logging.debug('max_hsv:', max_hsv)
 
-    areas = [cv2.contourArea(c) for c in contours]
-    logging.debug('area amount:', len(areas))
-
-    if not areas:
-        return None, None
-
-    length = len(areas)
+    length = len(contours)
     cords = np.empty((length, 2), dtype=np.float32)
 
     for i in range(length):
@@ -77,7 +71,7 @@ def process_image(frame):
             
     cords = cords[cords[:, 0].argsort()]
     x_list = cords[:, 0]
-    xn = [np.count_nonzero((x_list >= i) & (x_list < i + 40)) for i in x_list]
+    xn = [np.count_nonzero((x_list > i - 40) & (x_list <= i)) for i in x_list]
     i = np.argmax(xn)
     x = np.min(cords[i:i+xn[i], 0])
     y = np.average(cords[i:i+xn[i], 1])
