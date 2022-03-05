@@ -72,10 +72,11 @@ def process_image(frame):
     cords = cords[cords[:, 0].argsort()]
     x_list = cords[:, 0]
     xn = [np.count_nonzero((x_list > i - 40) & (x_list <= i)) for i in x_list]
+    if not xn: return None, None
     i = np.argmax(xn)
-    x = np.min(cords[i:i+xn[i], 0])
-    y = np.average(cords[i:i+xn[i], 1])
-    cv2.circle(mask, (int(x), int(y)), 10, 255, 2)
+    index = np.argmax([(x_list[j] if xn[j] is xn[i] else 0) for j in range(0, len(x_list))])
+    x, y = cords[index]
+    cv2.circle(mask, (int(x), int(y)), 30, 255, 2)
     output_stream.putFrame(mask)
 
     return x, y
